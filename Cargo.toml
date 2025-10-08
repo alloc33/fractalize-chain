@@ -8,14 +8,14 @@ edition = "2021"
 [workspace]
 members = [
     "node",
-    "pallets/template",
+    "pallets/price-oracle",
     "runtime",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 solochain-template-runtime = { path = "./runtime", default-features = false }
-pallet-template = { path = "./pallets/template", default-features = false }
+pallet-price-oracle = { path = "./pallets/price-oracle", default-features = false }
 clap = { version = "4.5.13" }
 frame-benchmarking-cli = { version = "47.0.0", default-features = false }
 frame-metadata-hash-extension = { version = "0.8.0", default-features = false }
@@ -64,13 +64,16 @@ pallet-sudo = { version = "40.0.0", default-features = false }
 pallet-timestamp = { version = "39.0.0", default-features = false }
 pallet-transaction-payment-rpc-runtime-api = { version = "40.0.0", default-features = false }
 scale-info = { version = "2.11.6", default-features = false }
+serde = { version = "1.0.228", default-features = false }
 serde_json = { version = "1.0.132", default-features = false }
+log = { version = "0.4.22", default-features = false }
 sp-consensus-grandpa = { version = "23.1.0", default-features = false }
 sp-offchain = { version = "36.0.0", default-features = false }
 sp-session = { version = "38.1.0", default-features = false }
 sp-storage = { version = "22.0.0", default-features = false }
 sp-transaction-pool = { version = "36.0.0", default-features = false }
 sp-version = { version = "39.0.0", default-features = false }
+sp-std = { version = "14.0.0", default-features = false }
 substrate-wasm-builder = { version = "26.0.1", default-features = false }
 
 [profile.release]
