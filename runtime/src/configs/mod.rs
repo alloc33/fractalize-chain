@@ -156,3 +156,7 @@ impl pallet_sudo::Config for Runtime {
 	type RuntimeCall = RuntimeCall;
 	type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
+
+impl pallet_price_oracle::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+}
