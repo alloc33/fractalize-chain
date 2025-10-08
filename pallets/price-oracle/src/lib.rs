@@ -49,6 +49,10 @@ pub mod pallet {
 		const UNISWAP_ETH_USDC: &'static str = "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8";
 		/// SushiSwap V2 ETH/USDC pool
 		const SUSHISWAP_ETH_USDC: &'static str = "0x397ff1542f962076d0bfe58ea045ffa2d347aca0";
+		/// PancakeSwap V2 ETH/USDC pool (BSC)
+		const PANCAKESWAP_ETH_USDC: &'static str = "0xea26b78255df2bbc31c1ebf60010d78670185bd0";
+		/// QuickSwap V2 ETH/USDC pool (Polygon)
+		const QUICKSWAP_ETH_USDC: &'static str = "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d";
 	}
 
 	/// Generic trait for fetching prices from DEX contracts
@@ -252,6 +256,140 @@ pub mod pallet {
 		}
 	}
 
+	struct PancakeswapFetcher;
+	impl DexPriceFetcher for PancakeswapFetcher {
+		const EXCHANGE_ID: u8 = 3;
+		const RPC_URL: &'static str = "https://bsc-dataseed.binance.org";
+
+		fn get_contract_address(pair: TokenPair) -> Option<&'static str> {
+			match pair {
+				TokenPair::EthUsd => Some(DexContracts::PANCAKESWAP_ETH_USDC),
+				_ => None,
+			}
+		}
+
+		fn parse_contract_price(data: &[u8]) -> Result<f64, &'static str> {
+			// PancakeSwap V2 uses same getReserves() interface as SushiSwap V2
+			if data.len() < 96 {
+				return Err("Invalid PancakeSwap V2 response length");
+			}
+
+			// Extract reserves (first two 32-byte values)
+			let reserve0_bytes = &data[0..32];
+			let reserve1_bytes = &data[32..64];
+			
+			let reserve0_u256 = U256::from_be_slice(reserve0_bytes);
+			let reserve1_u256 = U256::from_be_slice(reserve1_bytes);
+
+			// Convert to u128 first to avoid overflow
+			let reserve0_u128 = reserve0_u256.to::<u128>();
+			let reserve1_u128 = reserve1_u256.to::<u128>();
+			
+			if reserve0_u128 == 0 || reserve1_u128 == 0 {
+				return Err("Zero liquidity in PancakeSwap pool");
+			}
+
+			// Handle large numbers by scaling down before f64 conversion
+			// Assuming one is ETH (18 decimals) and one is USDC (6 decimals)
+			let reserve0_scaled = reserve0_u128 as f64;
+			let reserve1_scaled = reserve1_u128 as f64;
+			
+			// Calculate both possible price ratios
+			let ratio1 = reserve0_scaled / reserve1_scaled;
+			let ratio2 = reserve1_scaled / reserve0_scaled;
+			
+			// Apply decimal adjustments and check which gives reasonable ETH price
+			let price1 = ratio1 * 1e12; // If reserve0=USDC, reserve1=ETH
+			let price2 = ratio2 * 1e-12; // If reserve0=ETH, reserve1=USDC
+			let price3 = ratio1; // Same decimals
+			let price4 = ratio2; // Same decimals inverted
+			
+			// Find the price that's in reasonable ETH range
+			for price in [price1, price2, price3, price4] {
+				if price > 1000.0 && price < 20000.0 {
+					return Ok(price);
+				}
+			}
+			
+			Err("PancakeSwap: No reasonable ETH price found")
+		}
+
+		fn exchange_name() -> &'static str {
+			"PancakeSwap V2 (BSC)"
+		}
+
+		fn get_function_selector() -> [u8; 4] {
+			hex!("0902f1ac") // getReserves() selector
+		}
+	}
+
+	struct QuickswapFetcher;
+	impl DexPriceFetcher for QuickswapFetcher {
+		const EXCHANGE_ID: u8 = 4;
+		const RPC_URL: &'static str = "https://polygon-rpc.com";
+
+		fn get_contract_address(pair: TokenPair) -> Option<&'static str> {
+			match pair {
+				TokenPair::EthUsd => Some(DexContracts::QUICKSWAP_ETH_USDC),
+				_ => None,
+			}
+		}
+
+		fn parse_contract_price(data: &[u8]) -> Result<f64, &'static str> {
+			// QuickSwap V2 uses same getReserves() interface as other V2 DEXs
+			if data.len() < 96 {
+				return Err("Invalid QuickSwap V2 response length");
+			}
+
+			// Extract reserves (first two 32-byte values)
+			let reserve0_bytes = &data[0..32];
+			let reserve1_bytes = &data[32..64];
+			
+			let reserve0_u256 = U256::from_be_slice(reserve0_bytes);
+			let reserve1_u256 = U256::from_be_slice(reserve1_bytes);
+
+			let reserve0_u128 = reserve0_u256.to::<u128>();
+			let reserve1_u128 = reserve1_u256.to::<u128>();
+			
+			if reserve0_u128 == 0 || reserve1_u128 == 0 {
+				return Err("Zero liquidity in QuickSwap pool");
+			}
+
+			// Convert to f64 for calculations
+			let reserve0_scaled = reserve0_u128 as f64;
+			let reserve1_scaled = reserve1_u128 as f64;
+			
+			// Calculate both possible price ratios
+			let ratio1 = reserve0_scaled / reserve1_scaled;
+			let ratio2 = reserve1_scaled / reserve0_scaled;
+			
+			// Try different decimal adjustments to find reasonable ETH price
+			let price_options = [
+				ratio1 * 1e12,  // reserve0=USDC, reserve1=ETH
+				ratio2 * 1e-12, // reserve0=ETH, reserve1=USDC  
+				ratio1,         // Same decimals
+				ratio2,         // Same decimals inverted
+			];
+			
+			// Find the price that's in reasonable ETH range
+			for price in price_options {
+				if price > 1000.0 && price < 20000.0 {
+					return Ok(price);
+				}
+			}
+			
+			Err("QuickSwap: No reasonable ETH price found")
+		}
+
+		fn exchange_name() -> &'static str {
+			"QuickSwap V2 (Polygon)"
+		}
+
+		fn get_function_selector() -> [u8; 4] {
+			hex!("0902f1ac") // getReserves() selector
+		}
+	}
+
 	#[pallet::pallet]
 	pub struct Pallet<T>(_);
 
@@ -304,6 +442,12 @@ pub mod pallet {
 			}
 			if let Err(e) = Self::fetch_and_store_price::<SushiswapFetcher>(TokenPair::EthUsd) {
 				log::error!("SushiSwap fetch failed: {:?}", e);
+			}
+			if let Err(e) = Self::fetch_and_store_price::<PancakeswapFetcher>(TokenPair::EthUsd) {
+				log::error!("PancakeSwap fetch failed: {:?}", e);
+			}
+			if let Err(e) = Self::fetch_and_store_price::<QuickswapFetcher>(TokenPair::EthUsd) {
+				log::error!("QuickSwap fetch failed: {:?}", e);
 			}
 		}
 	}
