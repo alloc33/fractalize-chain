@@ -32,21 +32,6 @@ pub mod pallet {
 		}
 	}
 
-	/// DEX contract addresses
-	struct DexContracts;
-	impl DexContracts {
-		/// Uniswap V3 ETH/USDC pool (0.3% fee tier)
-		const UNISWAP_ETH_USDC: &'static str = "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8";
-		/// SushiSwap V2 ETH/USDC pool
-		const SUSHISWAP_ETH_USDC: &'static str = "0x397ff1542f962076d0bfe58ea045ffa2d347aca0";
-		/// PancakeSwap V2 ETH/USDC pool (BSC)
-		const PANCAKESWAP_ETH_USDC: &'static str = "0xea26b78255df2bbc31c1ebf60010d78670185bd0";
-		/// QuickSwap V2 ETH/USDC pool (Polygon)
-		const QUICKSWAP_ETH_USDC: &'static str = "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d";
-		/// Trader Joe AVAX/USDC pool (Avalanche)
-		const TRADERJOE_AVAX_USDC: &'static str = "0xa389f9430876455c36478deea9769b7ca4e3ddb1";
-	}
-
 	/// Chain-specific interface for contract calls
 	trait ChainInterface {
 		type RawResponse;
@@ -108,8 +93,8 @@ pub mod pallet {
 			let data_start = start + 10; // Skip '"result":"'
 			if let Some(end) = json[data_start..].find('"') {
 				let hex_data = &json[data_start..data_start + end];
-				if hex_data.starts_with("0x") {
-					return Ok(hex_data[2..].to_string());
+				if let Some(stripped) = hex_data.strip_prefix("0x") {
+					return Ok(stripped.to_string());
 				}
 			}
 		}
@@ -123,9 +108,6 @@ pub mod pallet {
 
 		/// Parse raw response to extract price
 		fn parse_price(response: C::RawResponse) -> Result<f64, &'static str>;
-
-		/// Protocol name for logging
-		fn protocol_name() -> &'static str;
 	}
 
 	/// Uniswap V3 protocol (works on any EVM chain)
@@ -153,10 +135,6 @@ pub mod pallet {
 			} else {
 				Err("Price out of reasonable range")
 			}
-		}
-
-		fn protocol_name() -> &'static str {
-			"Uniswap V3"
 		}
 	}
 
@@ -201,10 +179,6 @@ pub mod pallet {
 			}
 
 			Err("No reasonable ETH price found")
-		}
-
-		fn protocol_name() -> &'static str {
-			"Uniswap V2"
 		}
 	}
 
@@ -257,10 +231,6 @@ pub mod pallet {
 			} else {
 				Err("Trader Joe ETH price out of reasonable range")
 			}
-		}
-
-		fn protocol_name() -> &'static str {
-			"Trader Joe"
 		}
 	}
 
@@ -443,7 +413,7 @@ pub mod pallet {
 			let (price_micro, timestamp) = exchange.fetch_price(pair)?;
 
 			let pair_hash = pair.to_hash();
-			<PriceData<T>>::insert(&pair_hash, exchange.exchange_id, (price_micro, timestamp));
+			<PriceData<T>>::insert(pair_hash, exchange.exchange_id, (price_micro, timestamp));
 
 			<Pallet<T>>::deposit_event(Event::PriceUpdated {
 				token_pair: pair_hash,
@@ -464,7 +434,7 @@ pub mod pallet {
 
 		/// Get price data for a token pair from a specific exchange
 		pub fn get_price(pair_hash: [u8; 32], exchange_id: u8) -> Option<(u64, u64)> {
-			<PriceData<T>>::get(&pair_hash, exchange_id)
+			<PriceData<T>>::get(pair_hash, exchange_id)
 		}
 
 		/// Get all prices for a token pair from all exchanges
