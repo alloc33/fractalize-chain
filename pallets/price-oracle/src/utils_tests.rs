@@ -75,7 +75,7 @@ fn extract_result_data_various_hex_lengths() {
 		(r#"{"jsonrpc":"2.0","result":"0x1234","id":1}"#, "1234"),
 		(r#"{"jsonrpc":"2.0","result":"0x123456789abcdef0","id":1}"#, "123456789abcdef0"),
 	];
-	
+
 	for (input, expected) in test_cases {
 		let result = extract_result_data(input);
 		assert!(result.is_ok(), "Should handle hex string: {}", input);
@@ -86,14 +86,14 @@ fn extract_result_data_various_hex_lengths() {
 #[test]
 fn extract_result_data_real_world_examples() {
 	// Test with realistic Ethereum RPC responses
-	
+
 	// Typical Uniswap V3 slot0() response
 	let uniswap_v3_response = r#"{"jsonrpc":"2.0","id":1,"result":"0x000000000000000000000000000000000001c9c380000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}"#;
 	let result = extract_result_data(uniswap_v3_response);
 	assert!(result.is_ok(), "Should parse real Uniswap V3 response");
 	let hex_data = result.unwrap();
 	assert!(hex_data.len() > 100, "Should return substantial hex data");
-	
+
 	// Typical Uniswap V2 getReserves() response
 	let uniswap_v2_response = r#"{"jsonrpc":"2.0","id":1,"result":"0x000000000000000000000000000000000000000000000000000000174876e800000000000000000000000000000000000000000000000013da329b633647000000000000000000000000000000000000000000000000000000000000000065a0a0a0"}"#;
 	let result = extract_result_data(uniswap_v2_response);
@@ -101,3 +101,4 @@ fn extract_result_data_real_world_examples() {
 	let hex_data = result.unwrap();
 	assert!(hex_data.len() > 100, "Should return substantial hex data");
 }
+

@@ -50,7 +50,6 @@ pub mod pallet {
 		/// Maximum exchanges to query per block
 		#[pallet::constant]
 		type MaxExchangesPerBlock: Get<u8>;
-
 	}
 
 	#[pallet::event]
@@ -89,7 +88,7 @@ pub mod pallet {
 			}
 
 			// Fetch prices from all exchanges for all pairs - TRULY FLEXIBLE!
-			let pairs_to_fetch = [TokenPair::EthUsd]; 
+			let pairs_to_fetch = [TokenPair::EthUsd];
 
 			for pair in pairs_to_fetch {
 				let exchanges = registry::get_all_exchanges();
@@ -111,7 +110,7 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
-		/// Clean function to fetch and store price from any exchange
+		/// A function to fetch and store price from any exchange
 		fn fetch_and_store_price(
 			exchange: &dyn ExchangeInterface,
 			pair: TokenPair,
@@ -123,11 +122,7 @@ pub mod pallet {
 				exchange.fetch_price(pair, timeout_ms, min_price, max_price)?;
 			let pair_hash = pair.to_hash();
 
-			<PriceData<T>>::insert(
-				pair_hash,
-				exchange.get_exchange_id(),
-				(price_micro, timestamp),
-			);
+			<PriceData<T>>::insert(pair_hash, exchange.get_exchange_id(), (price_micro, timestamp));
 
 			<Pallet<T>>::deposit_event(Event::PriceUpdated {
 				token_pair: pair_hash,
