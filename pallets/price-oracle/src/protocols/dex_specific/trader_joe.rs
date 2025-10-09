@@ -1,5 +1,4 @@
-use crate::protocols::DexProtocol;
-use crate::{chains::EvmChain, types::TokenPair};
+use crate::{chains::EvmChain, protocols::DexProtocol, types::TokenPair};
 use sp_core::U256;
 use sp_std::vec::Vec;
 

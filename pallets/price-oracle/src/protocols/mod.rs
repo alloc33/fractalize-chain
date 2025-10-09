@@ -20,4 +20,3 @@ pub trait DexProtocol<C: ChainInterface> {
 	/// Parse raw response to extract price
 	fn parse_price(response: C::RawResponse) -> Result<f64, &'static str>;
 }
-

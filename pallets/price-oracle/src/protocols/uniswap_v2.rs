@@ -57,4 +57,3 @@ impl DexProtocol<EvmChain> for UniswapV2Protocol {
 		Err("No reasonable ETH price found")
 	}
 }
-

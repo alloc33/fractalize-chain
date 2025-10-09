@@ -54,4 +54,3 @@ impl DexProtocol<EvmChain> for UniswapV3Protocol {
 		}
 	}
 }
-

@@ -7,6 +7,18 @@ pub mod protocols;
 pub mod types;
 pub mod utils;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod protocol_tests;
+
+#[cfg(test)]
+mod utils_tests;
+
 pub use pallet::*;
 
 #[frame_support::pallet]

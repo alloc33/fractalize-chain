@@ -12,7 +12,7 @@ impl TokenPair {
 	pub fn as_str(&self) -> &'static str {
 		match self {
 			TokenPair::EthUsd => "ETH/USD",
-			TokenPair::BtcUsd => "BTC/USD", 
+			TokenPair::BtcUsd => "BTC/USD",
 			TokenPair::SolUsd => "SOL/USD",
 			TokenPair::AvaxUsd => "AVAX/USD",
 		}
@@ -27,8 +27,9 @@ impl TokenPair {
 		match self {
 			TokenPair::EthUsd => (1_000_000_000, 20_000_000_000), // $1,000 - $20,000
 			TokenPair::BtcUsd => (20_000_000_000, 200_000_000_000), // $20,000 - $200,000
-			TokenPair::SolUsd => (10_000_000, 1_000_000_000), // $10 - $1,000
-			TokenPair::AvaxUsd => (5_000_000, 200_000_000), // $5 - $200
+			TokenPair::SolUsd => (10_000_000, 1_000_000_000),     // $10 - $1,000
+			TokenPair::AvaxUsd => (5_000_000, 200_000_000),       // $5 - $200
 		}
 	}
 }
+
