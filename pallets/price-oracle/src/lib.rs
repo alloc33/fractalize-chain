@@ -287,6 +287,28 @@ pub mod pallet {
 		}
 	}
 
+	/// Common interface for all exchanges - enables clean iteration
+	trait ExchangeInterface {
+		fn fetch_price(&self, pair: TokenPair) -> Result<(u64, u64), http::Error>;
+		fn get_exchange_id(&self) -> u8;
+		fn get_name(&self) -> &str;
+	}
+
+	/// Implement the interface for all Exchange types
+	impl<C: ChainInterface, P: DexProtocol<C>> ExchangeInterface for Exchange<C, P> {
+		fn fetch_price(&self, pair: TokenPair) -> Result<(u64, u64), http::Error> {
+			self.fetch_price(pair)
+		}
+
+		fn get_exchange_id(&self) -> u8 {
+			self.exchange_id
+		}
+
+		fn get_name(&self) -> &str {
+			self.exchange_name
+		}
+	}
+
 	/// Exchange definitions using clean abstraction
 	mod exchanges {
 		use super::*;
@@ -329,6 +351,17 @@ pub mod pallet {
 			"Trader Joe (Avalanche)",
 			5,
 		);
+
+		/// Option 1: Dynamic dispatch (clean, tiny overhead)
+		pub fn get_all_exchanges() -> Vec<&'static dyn ExchangeInterface> {
+			vec![
+				&UNISWAP_ETH,
+				&SUSHISWAP_ETH,
+				&PANCAKESWAP_BSC,
+				&QUICKSWAP_POLYGON,
+				&TRADERJOE_AVAX,
+			]
+		}
 	}
 
 	#[pallet::pallet]
@@ -374,46 +407,29 @@ pub mod pallet {
 				return;
 			}
 
-			// Fetch prices from all exchanges using new abstraction
-			if let Err(e) =
-				Self::fetch_and_store_exchange_price(&exchanges::UNISWAP_ETH, TokenPair::EthUsd)
-			{
-				log::error!("Uniswap V3 fetch failed: {:?}", e);
-			}
-			if let Err(e) =
-				Self::fetch_and_store_exchange_price(&exchanges::SUSHISWAP_ETH, TokenPair::EthUsd)
-			{
-				log::error!("SushiSwap V2 fetch failed: {:?}", e);
-			}
-			if let Err(e) =
-				Self::fetch_and_store_exchange_price(&exchanges::PANCAKESWAP_BSC, TokenPair::EthUsd)
-			{
-				log::error!("PancakeSwap V2 (BSC) fetch failed: {:?}", e);
-			}
-			if let Err(e) = Self::fetch_and_store_exchange_price(
-				&exchanges::QUICKSWAP_POLYGON,
-				TokenPair::EthUsd,
-			) {
-				log::error!("QuickSwap V2 (Polygon) fetch failed: {:?}", e);
-			}
-			if let Err(e) =
-				Self::fetch_and_store_exchange_price(&exchanges::TRADERJOE_AVAX, TokenPair::EthUsd)
-			{
-				log::error!("Trader Joe (Avalanche) fetch failed: {:?}", e);
+			// Fetch prices from all exchanges - clean and scalable!
+			for exchange in exchanges::get_all_exchanges() {
+				if let Err(e) = Self::fetch_and_store_price(exchange, TokenPair::EthUsd) {
+					log::error!("{} fetch failed: {:?}", exchange.get_name(), e);
+				}
 			}
 		}
 	}
 
 	impl<T: Config> Pallet<T> {
-		/// Helper function to fetch and store price from an exchange
-		fn fetch_and_store_exchange_price<C: ChainInterface, P: DexProtocol<C>>(
-			exchange: &Exchange<C, P>,
+		/// Clean function to fetch and store price from any exchange
+		fn fetch_and_store_price(
+			exchange: &dyn ExchangeInterface,
 			pair: TokenPair,
 		) -> Result<(), http::Error> {
 			let (price_micro, timestamp) = exchange.fetch_price(pair)?;
-
 			let pair_hash = pair.to_hash();
-			<PriceData<T>>::insert(pair_hash, exchange.exchange_id, (price_micro, timestamp));
+
+			<PriceData<T>>::insert(
+				&pair_hash,
+				exchange.get_exchange_id(),
+				(price_micro, timestamp),
+			);
 
 			<Pallet<T>>::deposit_event(Event::PriceUpdated {
 				token_pair: pair_hash,
@@ -424,7 +440,7 @@ pub mod pallet {
 			log::info!(
 				"Stored {} price from {}: {}μ at timestamp {}",
 				pair.as_str(),
-				exchange.exchange_name,
+				exchange.get_name(),
 				price_micro,
 				timestamp
 			);
