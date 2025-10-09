@@ -1,7 +1,7 @@
 //! # Price Oracle Pallet
 //!
 //! A decentralized price oracle that fetches real-time cryptocurrency prices from multiple DEXs
-//! across different blockchains. Designed for ArbitrageChain to detect MEV opportunities.
+//! across different blockchains. Designed for FractalizeChain to detect MEV opportunities.
 //!
 //! ## Features
 //! - Multi-chain support (Ethereum, BSC, Polygon, Avalanche)
