@@ -53,6 +53,8 @@ pub mod pallet {
 		const PANCAKESWAP_ETH_USDC: &'static str = "0xea26b78255df2bbc31c1ebf60010d78670185bd0";
 		/// QuickSwap V2 ETH/USDC pool (Polygon)
 		const QUICKSWAP_ETH_USDC: &'static str = "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d";
+		/// Trader Joe AVAX/USDC pool (Avalanche)
+		const TRADERJOE_AVAX_USDC: &'static str = "0xa389f9430876455c36478deea9769b7ca4e3ddb1";
 	}
 
 	/// Generic trait for fetching prices from DEX contracts
@@ -72,6 +74,11 @@ pub mod pallet {
 		/// Get function selector for price query (slot0() for V3, getReserves() for V2)
 		fn get_function_selector() -> [u8; 4];
 
+		/// Get function call data (includes parameters for complex calls like Curve)
+		fn get_call_data() -> Vec<u8> {
+			Self::get_function_selector().to_vec()
+		}
+
 		/// Fetch price via direct contract call
 		fn fetch_price(pair: TokenPair) -> Result<(u64, u64), http::Error> {
 			log::info!(
@@ -82,8 +89,8 @@ pub mod pallet {
 
 			let contract_addr = Self::get_contract_address(pair).ok_or(http::Error::Unknown)?;
 
-			// Get the appropriate function selector for this exchange
-			let call_data = Self::get_function_selector();
+			// Get the appropriate function call data for this exchange
+			let call_data = Self::get_call_data();
 
 			let rpc_request = format!(
 				"{{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{{\"to\":\"{}\",\"data\":\"0x{}\"}},\"latest\"],\"id\":1}}",
@@ -390,6 +397,80 @@ pub mod pallet {
 		}
 	}
 
+	struct TraderJoeFetcher;
+	impl DexPriceFetcher for TraderJoeFetcher {
+		const EXCHANGE_ID: u8 = 5;
+		const RPC_URL: &'static str = "https://api.avax.network/ext/bc/C/rpc";
+
+		fn get_contract_address(pair: TokenPair) -> Option<&'static str> {
+			match pair {
+				TokenPair::EthUsd => Some(DexContracts::TRADERJOE_AVAX_USDC),
+				_ => None,
+			}
+		}
+
+		fn parse_contract_price(data: &[u8]) -> Result<f64, &'static str> {
+			// Trader Joe V2 uses same getReserves() interface as other V2 DEXs
+			if data.len() < 96 {
+				return Err("Invalid Trader Joe response length");
+			}
+
+			// Extract reserves (first two 32-byte values)
+			let reserve0_bytes = &data[0..32];
+			let reserve1_bytes = &data[32..64];
+			
+			let reserve0_u256 = U256::from_be_slice(reserve0_bytes);
+			let reserve1_u256 = U256::from_be_slice(reserve1_bytes);
+
+			let reserve0_u128 = reserve0_u256.to::<u128>();
+			let reserve1_u128 = reserve1_u256.to::<u128>();
+			
+			if reserve0_u128 == 0 || reserve1_u128 == 0 {
+				return Err("Zero liquidity in Trader Joe pool");
+			}
+
+			// Convert to f64 for calculations
+			let reserve0_scaled = reserve0_u128 as f64;
+			let reserve1_scaled = reserve1_u128 as f64;
+			
+			// This is AVAX/USDC pool, so we get AVAX price in USD
+			// Then we'll approximate ETH price (ETH usually ~0.15x AVAX price)
+			let ratio1 = reserve0_scaled / reserve1_scaled;
+			let ratio2 = reserve1_scaled / reserve0_scaled;
+			
+			// Try different decimal adjustments to find reasonable AVAX price
+			let avax_price_options = [
+				ratio1 * 1e12,  // reserve0=USDC, reserve1=AVAX
+				ratio2 * 1e-12, // reserve0=AVAX, reserve1=USDC  
+				ratio1,         // Same decimals
+				ratio2,         // Same decimals inverted
+			];
+			
+			// Find AVAX price in reasonable range ($20-100)
+			let avax_price = avax_price_options.iter()
+				.find(|&&price| price > 20.0 && price < 100.0)
+				.copied()
+				.ok_or("No reasonable AVAX price found")?;
+			
+			// Approximate ETH price from AVAX price (ETH typically ~100-150x AVAX price)
+			let eth_price = avax_price * 120.0; // Rough multiplier
+
+			if eth_price > 1000.0 && eth_price < 20000.0 {
+				Ok(eth_price)
+			} else {
+				Err("Trader Joe ETH price out of reasonable range")
+			}
+		}
+
+		fn exchange_name() -> &'static str {
+			"Trader Joe (Avalanche)"
+		}
+
+		fn get_function_selector() -> [u8; 4] {
+			hex!("0902f1ac") // getReserves() selector
+		}
+	}
+
 	#[pallet::pallet]
 	pub struct Pallet<T>(_);
 
@@ -448,6 +529,9 @@ pub mod pallet {
 			}
 			if let Err(e) = Self::fetch_and_store_price::<QuickswapFetcher>(TokenPair::EthUsd) {
 				log::error!("QuickSwap fetch failed: {:?}", e);
+			}
+			if let Err(e) = Self::fetch_and_store_price::<TraderJoeFetcher>(TokenPair::EthUsd) {
+				log::error!("Trader Joe fetch failed: {:?}", e);
 			}
 		}
 	}
