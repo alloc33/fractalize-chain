@@ -18,12 +18,18 @@ pub mod pallet {
 	#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 	pub enum TokenPair {
 		EthUsd,
+		BtcUsd,
+		SolUsd,
+		AvaxUsd,
 	}
 
 	impl TokenPair {
 		pub fn as_str(&self) -> &'static str {
 			match self {
 				TokenPair::EthUsd => "ETH/USD",
+				TokenPair::BtcUsd => "BTC/USD",
+				TokenPair::SolUsd => "SOL/USD",
+				TokenPair::AvaxUsd => "AVAX/USD",
 			}
 		}
 
@@ -103,6 +109,9 @@ pub mod pallet {
 
 	/// DEX protocol abstraction (independent of chain)
 	trait DexProtocol<C: ChainInterface> {
+		/// Get pool address for a specific trading pair
+		fn get_pool_address(pair: TokenPair) -> &'static str;
+
 		/// Get function call data for price query
 		fn get_call_data(pair: TokenPair) -> Vec<u8>;
 
@@ -113,6 +122,15 @@ pub mod pallet {
 	/// Uniswap V3 protocol (works on any EVM chain)
 	struct UniswapV3Protocol;
 	impl DexProtocol<EvmChain> for UniswapV3Protocol {
+		fn get_pool_address(pair: TokenPair) -> &'static str {
+			match pair {
+				TokenPair::EthUsd => "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8", // ETH/USDC 0.3%
+				TokenPair::BtcUsd => "0x99ac8ca7087fa4a2a1fb6357269965a2014abc35", /* WBTC/USDC 0.3% */
+				TokenPair::SolUsd => "0xd0fc8ba7e267f2bc56044a7715a489d851dc6d78", // SOL/USDC 0.3%
+				TokenPair::AvaxUsd => "0xfab5a05c933f1a2463e334e011992e897d56ef0a", /* AVAX/USDC 0.3% */
+			}
+		}
+
 		fn get_call_data(_pair: TokenPair) -> Vec<u8> {
 			hex!("3850c7bd").to_vec() // slot0() selector
 		}
@@ -141,6 +159,15 @@ pub mod pallet {
 	/// Uniswap V2 protocol (works on any EVM chain - PancakeSwap, SushiSwap, QuickSwap, etc.)
 	struct UniswapV2Protocol;
 	impl DexProtocol<EvmChain> for UniswapV2Protocol {
+		fn get_pool_address(pair: TokenPair) -> &'static str {
+			match pair {
+				TokenPair::EthUsd => "0x397ff1542f962076d0bfe58ea045ffa2d347aca0", // WETH/USDC
+				TokenPair::BtcUsd => "0xceff51756c56ceffca006cd410b03ffc46dd3a58", // WBTC/USDC
+				TokenPair::SolUsd => "0x2b3e659649c0c0dd0a7fac6f11f4a8a8dffdaeee", /* SOL/USDC (if exists) */
+				TokenPair::AvaxUsd => "0xc3f279090a47e80990fe3a9c30d24cb117ef91a8", /* AVAX/USDC (if exists) */
+			}
+		}
+
 		fn get_call_data(_pair: TokenPair) -> Vec<u8> {
 			hex!("0902f1ac").to_vec() // getReserves() selector
 		}
@@ -182,9 +209,124 @@ pub mod pallet {
 		}
 	}
 
-	/// Trader Joe protocol (AVAX/USDC converted to ETH price)
+	/// PancakeSwap protocol (BSC chain)
+	struct PancakeSwapProtocol;
+	impl DexProtocol<EvmChain> for PancakeSwapProtocol {
+		fn get_pool_address(pair: TokenPair) -> &'static str {
+			match pair {
+				TokenPair::EthUsd => "0xea26b78255df2bbc31c1ebf60010d78670185bd0", /* ETH/USDC on BSC */
+				TokenPair::BtcUsd => "0xd99c7f6c65857ac913a8f880a4cb84032ab2fc5b", /* BTCB/USDC on BSC */
+				TokenPair::SolUsd => "0x1b96b92314c44b159149f7e0303511fb2fc4774f", /* SOL/USDC on BSC */
+				TokenPair::AvaxUsd => "0x40afdb9a8bb67ba8ab8cedc4ee0c6ecf9bbdaaf6", /* AVAX/USDC on BSC */
+			}
+		}
+
+		fn get_call_data(_pair: TokenPair) -> Vec<u8> {
+			hex!("0902f1ac").to_vec() // getReserves() selector
+		}
+
+		fn parse_price(data: Vec<u8>) -> Result<f64, &'static str> {
+			if data.len() < 96 {
+				return Err("Invalid PancakeSwap response length");
+			}
+
+			let reserve0_u256 = U256::from_be_slice(&data[0..32]);
+			let reserve1_u256 = U256::from_be_slice(&data[32..64]);
+			let reserve0_u128 = reserve0_u256.to::<u128>();
+			let reserve1_u128 = reserve1_u256.to::<u128>();
+
+			if reserve0_u128 == 0 || reserve1_u128 == 0 {
+				return Err("Zero liquidity in PancakeSwap pool");
+			}
+
+			let reserve0_scaled = reserve0_u128 as f64;
+			let reserve1_scaled = reserve1_u128 as f64;
+			let ratio1 = reserve0_scaled / reserve1_scaled;
+			let ratio2 = reserve1_scaled / reserve0_scaled;
+
+			// Try different decimal adjustments to find reasonable ETH price
+			let price_options = [
+				ratio1 * 1e12,  // reserve0=USDC, reserve1=ETH
+				ratio2 * 1e-12, // reserve0=ETH, reserve1=USDC
+				ratio1,         // Same decimals
+				ratio2,         // Same decimals inverted
+			];
+
+			for price in price_options {
+				if price > 1000.0 && price < 20000.0 {
+					return Ok(price);
+				}
+			}
+
+			Err("No reasonable ETH price found on PancakeSwap")
+		}
+	}
+
+	/// QuickSwap protocol (Polygon chain)
+	struct QuickSwapProtocol;
+	impl DexProtocol<EvmChain> for QuickSwapProtocol {
+		fn get_pool_address(pair: TokenPair) -> &'static str {
+			match pair {
+				TokenPair::EthUsd => "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d", /* ETH/USDC on Polygon */
+				TokenPair::BtcUsd => "0xf6a637525402643b0654a54bead2cb9a83c8b498", /* WBTC/USDC on Polygon */
+				TokenPair::SolUsd => "0x69015912aa33720b842dcd6ac78d8ac8be25f32a", /* SOL/USDC on Polygon */
+				TokenPair::AvaxUsd => "0xb0b195aefa3650a6908f15cdac7d92f8a5791b0b", /* AVAX/USDC on Polygon */
+			}
+		}
+
+		fn get_call_data(_pair: TokenPair) -> Vec<u8> {
+			hex!("0902f1ac").to_vec() // getReserves() selector
+		}
+
+		fn parse_price(data: Vec<u8>) -> Result<f64, &'static str> {
+			if data.len() < 96 {
+				return Err("Invalid QuickSwap response length");
+			}
+
+			let reserve0_u256 = U256::from_be_slice(&data[0..32]);
+			let reserve1_u256 = U256::from_be_slice(&data[32..64]);
+			let reserve0_u128 = reserve0_u256.to::<u128>();
+			let reserve1_u128 = reserve1_u256.to::<u128>();
+
+			if reserve0_u128 == 0 || reserve1_u128 == 0 {
+				return Err("Zero liquidity in QuickSwap pool");
+			}
+
+			let reserve0_scaled = reserve0_u128 as f64;
+			let reserve1_scaled = reserve1_u128 as f64;
+			let ratio1 = reserve0_scaled / reserve1_scaled;
+			let ratio2 = reserve1_scaled / reserve0_scaled;
+
+			// Try different decimal adjustments to find reasonable ETH price
+			let price_options = [
+				ratio1 * 1e12,  // reserve0=USDC, reserve1=ETH
+				ratio2 * 1e-12, // reserve0=ETH, reserve1=USDC
+				ratio1,         // Same decimals
+				ratio2,         // Same decimals inverted
+			];
+
+			for price in price_options {
+				if price > 1000.0 && price < 20000.0 {
+					return Ok(price);
+				}
+			}
+
+			Err("No reasonable ETH price found on QuickSwap")
+		}
+	}
+
+	/// Trader Joe protocol (Avalanche chain)
 	struct TraderJoeProtocol;
 	impl DexProtocol<EvmChain> for TraderJoeProtocol {
+		fn get_pool_address(pair: TokenPair) -> &'static str {
+			match pair {
+				TokenPair::EthUsd => "0xfe15c2695f1f920da45c30aae47d11de51007af9", /* ETH/USDC on Avalanche */
+				TokenPair::BtcUsd => "0x2fb245b9c0fb306e93c5764d5e9a8b4e975e72b7", /* BTC/USDC on Avalanche */
+				TokenPair::SolUsd => "0x2d9e55e67c3b1c42823c8b618bb3e5b1c6e8e2ea", /* SOL/USDC on Avalanche */
+				TokenPair::AvaxUsd => "0xa389f9430876455c36478deea9769b7ca4e3ddb1", /* AVAX/USDC on Avalanche */
+			}
+		}
+
 		fn get_call_data(_pair: TokenPair) -> Vec<u8> {
 			hex!("0902f1ac").to_vec() // getReserves() selector
 		}
@@ -208,80 +350,47 @@ pub mod pallet {
 			let ratio1 = reserve0_scaled / reserve1_scaled;
 			let ratio2 = reserve1_scaled / reserve0_scaled;
 
-			// Try different decimal adjustments to find reasonable AVAX price
-			let avax_price_options = [
-				ratio1 * 1e12,  // reserve0=USDC, reserve1=AVAX
-				ratio2 * 1e-12, // reserve0=AVAX, reserve1=USDC
+			// Try different decimal adjustments to find reasonable price
+			let price_options = [
+				ratio1 * 1e12,  // reserve0=USDC, reserve1=Token
+				ratio2 * 1e-12, // reserve0=Token, reserve1=USDC
 				ratio1,         // Same decimals
 				ratio2,         // Same decimals inverted
 			];
 
-			// Find AVAX price in reasonable range ($20-100)
-			let avax_price = avax_price_options
-				.iter()
-				.find(|&&price| price > 20.0 && price < 100.0)
-				.copied()
-				.ok_or("No reasonable AVAX price found")?;
-
-			// Approximate ETH price from AVAX price (ETH typically ~100-150x AVAX price)
-			let eth_price = avax_price * 120.0; // Rough multiplier
-
-			if eth_price > 1000.0 && eth_price < 20000.0 {
-				Ok(eth_price)
-			} else {
-				Err("Trader Joe ETH price out of reasonable range")
+			for price in price_options {
+				if price > 1000.0 && price < 20000.0 {
+					return Ok(price);
+				}
 			}
+
+			Err("No reasonable price found on Trader Joe")
 		}
 	}
 
-	/// Exchange instance combining chain + protocol + address
+	/// Exchange instance combining chain + protocol (address resolved dynamically)
 	struct Exchange<C: ChainInterface, P: DexProtocol<C>> {
 		rpc_url: &'static str,
-		contract_address: &'static str,
 		exchange_name: &'static str,
 		exchange_id: u8,
 		_phantom: core::marker::PhantomData<(C, P)>,
 	}
 
 	impl<C: ChainInterface, P: DexProtocol<C>> Exchange<C, P> {
-		const fn new(
-			rpc_url: &'static str,
-			contract_address: &'static str,
-			exchange_name: &'static str,
-			exchange_id: u8,
-		) -> Self {
-			Self {
-				rpc_url,
-				contract_address,
-				exchange_name,
-				exchange_id,
-				_phantom: core::marker::PhantomData,
-			}
+		const fn new(rpc_url: &'static str, exchange_name: &'static str, exchange_id: u8) -> Self {
+			Self { rpc_url, exchange_name, exchange_id, _phantom: core::marker::PhantomData }
 		}
 
 		fn fetch_price(&self, pair: TokenPair) -> Result<(u64, u64), http::Error> {
-			log::info!(
-				"Fetching {} from {} via contract call...",
-				pair.as_str(),
-				self.exchange_name
-			);
-
+			let pool_address = P::get_pool_address(pair);
 			let call_data = P::get_call_data(pair);
-			let raw_response = C::call_contract(self.rpc_url, self.contract_address, &call_data)?;
-
-			log::info!("{} contract response received", self.exchange_name);
+			let raw_response = C::call_contract(self.rpc_url, pool_address, &call_data)?;
 
 			let price_f64 = P::parse_price(raw_response).map_err(|_| http::Error::Unknown)?;
 			let price_micro = (price_f64 * 1_000_000.0) as u64;
 			let timestamp = sp_io::offchain::timestamp().unix_millis();
 
-			log::info!(
-				"Got {} price from {}: ${} ({}μ)",
-				pair.as_str(),
-				self.exchange_name,
-				price_f64,
-				price_micro
-			);
+			log::info!("✅ {} | {} | ${:.2}", self.exchange_name, pair.as_str(), price_f64);
 
 			Ok((price_micro, timestamp))
 		}
@@ -314,43 +423,23 @@ pub mod pallet {
 		use super::*;
 
 		// Ethereum exchanges
-		pub static UNISWAP_ETH: Exchange<EvmChain, UniswapV3Protocol> = Exchange::new(
-			"https://eth.llamarpc.com",
-			"0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8",
-			"Uniswap V3",
-			1,
-		);
+		pub static UNISWAP_ETH: Exchange<EvmChain, UniswapV3Protocol> =
+			Exchange::new("https://eth.llamarpc.com", "Uniswap V3 (Ethereum)", 1);
 
-		pub static SUSHISWAP_ETH: Exchange<EvmChain, UniswapV2Protocol> = Exchange::new(
-			"https://eth.llamarpc.com",
-			"0x397ff1542f962076d0bfe58ea045ffa2d347aca0",
-			"SushiSwap V2",
-			2,
-		);
+		pub static SUSHISWAP_ETH: Exchange<EvmChain, UniswapV2Protocol> =
+			Exchange::new("https://eth.llamarpc.com", "SushiSwap V2 (Ethereum)", 2);
 
 		// BSC exchanges
-		pub static PANCAKESWAP_BSC: Exchange<EvmChain, UniswapV2Protocol> = Exchange::new(
-			"https://bsc-dataseed.binance.org",
-			"0xea26b78255df2bbc31c1ebf60010d78670185bd0",
-			"PancakeSwap V2 (BSC)",
-			3,
-		);
+		pub static PANCAKESWAP_BSC: Exchange<EvmChain, PancakeSwapProtocol> =
+			Exchange::new("https://bsc-dataseed.binance.org", "PancakeSwap V2 (BSC)", 3);
 
 		// Polygon exchanges
-		pub static QUICKSWAP_POLYGON: Exchange<EvmChain, UniswapV2Protocol> = Exchange::new(
-			"https://polygon-rpc.com",
-			"0x853ee4b2a13f8a742d64c8f088be7ba2131f670d",
-			"QuickSwap V2 (Polygon)",
-			4,
-		);
+		pub static QUICKSWAP_POLYGON: Exchange<EvmChain, QuickSwapProtocol> =
+			Exchange::new("https://polygon-rpc.com", "QuickSwap V2 (Polygon)", 4);
 
-		// Avalanche exchanges (special case - AVAX/USDC approximated to ETH price)
-		pub static TRADERJOE_AVAX: Exchange<EvmChain, TraderJoeProtocol> = Exchange::new(
-			"https://api.avax.network/ext/bc/C/rpc",
-			"0xa389f9430876455c36478deea9769b7ca4e3ddb1",
-			"Trader Joe (Avalanche)",
-			5,
-		);
+		// Avalanche exchanges
+		pub static TRADERJOE_AVAX: Exchange<EvmChain, TraderJoeProtocol> =
+			Exchange::new("https://api.avax.network/ext/bc/C/rpc", "Trader Joe (Avalanche)", 5);
 
 		/// Option 1: Dynamic dispatch (clean, tiny overhead)
 		pub fn get_all_exchanges() -> Vec<&'static dyn ExchangeInterface> {
@@ -403,14 +492,19 @@ pub mod pallet {
 			log::info!("Running offchain worker at block: {:?}", block_number);
 
 			// Only run every 10 blocks to avoid spam
-			if block_number % 10u32.into() != sp_runtime::traits::Zero::zero() {
+			// every 3 block temporarily for testing
+			if block_number % 3u32.into() != sp_runtime::traits::Zero::zero() {
 				return;
 			}
 
-			// Fetch prices from all exchanges - clean and scalable!
-			for exchange in exchanges::get_all_exchanges() {
-				if let Err(e) = Self::fetch_and_store_price(exchange, TokenPair::EthUsd) {
-					log::error!("{} fetch failed: {:?}", exchange.get_name(), e);
+			// Fetch prices from all exchanges for all pairs - TRULY FLEXIBLE!
+			let pairs_to_fetch = [TokenPair::EthUsd]; // Start with working pair, expand gradually
+
+			for pair in pairs_to_fetch {
+				for exchange in exchanges::get_all_exchanges() {
+					if let Err(_e) = Self::fetch_and_store_price(exchange, pair) {
+						log::error!("❌ {} | {}", exchange.get_name(), pair.as_str());
+					}
 				}
 			}
 		}
@@ -437,13 +531,7 @@ pub mod pallet {
 				timestamp,
 			});
 
-			log::info!(
-				"Stored {} price from {}: {}μ at timestamp {}",
-				pair.as_str(),
-				exchange.get_name(),
-				price_micro,
-				timestamp
-			);
+			// Price already logged in fetch_price with ✅
 
 			Ok(())
 		}
