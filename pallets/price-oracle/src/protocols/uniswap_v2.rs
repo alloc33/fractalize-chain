@@ -1,3 +1,8 @@
+//! # Uniswap V2 Protocol
+//!
+//! Implements price fetching from Uniswap V2-style AMM pools using getReserves() calls.
+//! Works with SushiSwap and other V2 forks on Ethereum.
+
 use super::DexProtocol;
 use crate::{chains::EvmChain, types::TokenPair};
 use sp_core::U256;

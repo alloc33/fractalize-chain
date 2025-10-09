@@ -1,3 +1,7 @@
+//! # Core Pallet Tests
+//!
+//! Tests for storage, configuration, and basic pallet functionality.
+
 use crate::{mock::*, types::TokenPair, *};
 use frame_support::traits::Get;
 

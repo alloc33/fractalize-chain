@@ -1,3 +1,7 @@
+//! # Utility Function Tests
+//!
+//! Tests for JSON-RPC response parsing and data extraction utilities.
+
 use crate::utils::extract_result_data;
 
 #[test]

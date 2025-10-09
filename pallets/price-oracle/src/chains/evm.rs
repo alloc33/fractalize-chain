@@ -1,3 +1,8 @@
+//! # EVM Chain Implementation
+//!
+//! Handles smart contract calls for all EVM-compatible chains including
+//! Ethereum, BSC, Polygon, Avalanche, and Arbitrum.
+
 use super::ChainInterface;
 use crate::utils::extract_result_data;
 use sp_runtime::offchain::http;

@@ -1,3 +1,7 @@
+//! # Token Pair Types
+//!
+//! Defines supported trading pairs and their price bounds for validation.
+
 use sp_io;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,3 +1,8 @@
+//! # Uniswap V3 Protocol
+//!
+//! Implements price fetching from Uniswap V3 pools using slot0() calls.
+//! Handles sqrtPriceX96 conversion to USD prices.
+
 use super::DexProtocol;
 use crate::{chains::EvmChain, types::TokenPair};
 use sp_core::U256;

@@ -1,3 +1,8 @@
+//! # QuickSwap Protocol (Polygon)
+//!
+//! QuickSwap V2 implementation for Polygon network.
+//! Uses the same interface as Uniswap V2 but with Polygon-specific pool addresses.
+
 use crate::{chains::EvmChain, protocols::DexProtocol, types::TokenPair};
 use sp_core::U256;
 use sp_std::vec::Vec;

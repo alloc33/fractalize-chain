@@ -1,3 +1,8 @@
+//! # Exchange Management
+//!
+//! Combines chain interfaces and DEX protocols into concrete exchange instances.
+//! Provides a unified interface for iterating over all supported exchanges.
+
 use crate::{
 	chains::{ChainInterface, EvmChain},
 	protocols::{

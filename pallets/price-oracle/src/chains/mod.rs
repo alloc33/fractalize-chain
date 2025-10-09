@@ -1,3 +1,8 @@
+//! # Chain Interfaces
+//!
+//! Abstractions for different blockchain networks (EVM, Solana, etc.).
+//! Each chain implements the ChainInterface trait for smart contract calls.
+
 mod evm;
 
 pub use evm::*;

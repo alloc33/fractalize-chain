@@ -1,3 +1,7 @@
+//! # Mock Runtime for Testing
+//!
+//! Test runtime configuration for the price oracle pallet.
+
 use crate as pallet_price_oracle;
 use frame_support::{
 	derive_impl,

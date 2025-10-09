@@ -1,3 +1,8 @@
+//! # Protocol Implementation Tests
+//!
+//! Tests for DEX protocol implementations including parsing logic,
+//! function selectors, and pool address validation.
+
 use crate::{protocols::*, types::TokenPair};
 use sp_std::vec;
 

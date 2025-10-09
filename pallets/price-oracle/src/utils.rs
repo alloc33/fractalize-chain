@@ -1,3 +1,7 @@
+//! # Utility Functions
+//!
+//! Helper functions for JSON-RPC response parsing and data extraction.
+
 use sp_runtime::offchain::http;
 extern crate alloc;
 use alloc::string::{String, ToString};

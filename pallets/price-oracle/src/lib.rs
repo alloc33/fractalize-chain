@@ -1,3 +1,15 @@
+//! # Price Oracle Pallet
+//!
+//! A decentralized price oracle that fetches real-time cryptocurrency prices from multiple DEXs
+//! across different blockchains. Designed for ArbitrageChain to detect MEV opportunities.
+//!
+//! ## Features
+//! - Multi-chain support (Ethereum, BSC, Polygon, Avalanche)
+//! - Direct smart contract calls (no APIs)
+//! - Configurable update intervals and timeouts
+//! - Price validation and bounds checking
+//! - Modular architecture for easy exchange addition
+
 #![cfg_attr(not(feature = "std"), no_std)]
 
 // Re-export all modules

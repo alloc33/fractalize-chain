@@ -1,3 +1,8 @@
+//! # DEX Protocol Implementations
+//!
+//! Protocol abstractions for different DEX types (Uniswap V2/V3, etc.).
+//! Each protocol knows how to call contracts and parse responses.
+
 pub mod dex_specific;
 mod uniswap_v2;
 mod uniswap_v3;

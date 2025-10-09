@@ -1,3 +1,8 @@
+//! # Trader Joe Protocol (Avalanche)
+//!
+//! Trader Joe V2 implementation for Avalanche network.
+//! Special case: fetches AVAX prices and converts to ETH using multiplier.
+
 use crate::{chains::EvmChain, protocols::DexProtocol, types::TokenPair};
 use sp_core::U256;
 use sp_std::vec::Vec;
