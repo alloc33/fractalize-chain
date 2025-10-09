@@ -26,6 +26,19 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+		/// How often to update prices (in blocks)
+		#[pallet::constant]
+		type UpdateInterval: Get<BlockNumberFor<Self>>;
+
+		/// HTTP request timeout in milliseconds
+		#[pallet::constant]
+		type HttpTimeout: Get<u64>;
+
+		/// Maximum exchanges to query per block
+		#[pallet::constant]
+		type MaxExchangesPerBlock: Get<u8>;
+
 	}
 
 	#[pallet::event]
@@ -58,17 +71,25 @@ pub mod pallet {
 		fn offchain_worker(block_number: BlockNumberFor<T>) {
 			log::info!("Running offchain worker at block: {:?}", block_number);
 
-			// Only run every 10 blocks to avoid spam
-			// every 3 block temporarily for testing
-			if block_number % 3u32.into() != sp_runtime::traits::Zero::zero() {
+			// Use configurable update interval
+			if block_number % T::UpdateInterval::get() != sp_runtime::traits::Zero::zero() {
 				return;
 			}
 
 			// Fetch prices from all exchanges for all pairs - TRULY FLEXIBLE!
-			let pairs_to_fetch = [TokenPair::EthUsd]; // Start with working pair, expand gradually
+			let pairs_to_fetch = [TokenPair::EthUsd]; 
 
 			for pair in pairs_to_fetch {
-				for exchange in registry::get_all_exchanges() {
+				let exchanges = registry::get_all_exchanges();
+				let max_exchanges = T::MaxExchangesPerBlock::get() as usize;
+				let exchanges_to_query = if exchanges.len() <= max_exchanges {
+					exchanges
+				} else {
+					// Take first N exchanges (could be randomized later)
+					exchanges.into_iter().take(max_exchanges).collect()
+				};
+
+				for exchange in exchanges_to_query {
 					if let Err(_e) = Self::fetch_and_store_price(exchange, pair) {
 						log::error!("❌ {} | {}", exchange.get_name(), pair.as_str());
 					}
@@ -83,11 +104,15 @@ pub mod pallet {
 			exchange: &dyn ExchangeInterface,
 			pair: TokenPair,
 		) -> Result<(), http::Error> {
-			let (price_micro, timestamp) = exchange.fetch_price(pair)?;
+			let timeout_ms = T::HttpTimeout::get();
+			let (min_price, max_price) = pair.get_price_bounds();
+
+			let (price_micro, timestamp) =
+				exchange.fetch_price(pair, timeout_ms, min_price, max_price)?;
 			let pair_hash = pair.to_hash();
 
 			<PriceData<T>>::insert(
-				&pair_hash,
+				pair_hash,
 				exchange.get_exchange_id(),
 				(price_micro, timestamp),
 			);
@@ -121,4 +146,3 @@ pub mod pallet {
 		}
 	}
 }
-

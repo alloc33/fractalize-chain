@@ -1,6 +1,6 @@
 use crate::protocols::DexProtocol;
 use crate::{chains::EvmChain, types::TokenPair};
-use alloy_primitives::{hex, U256};
+use sp_core::U256;
 use sp_std::vec::Vec;
 
 /// Trader Joe protocol (Avalanche chain)
@@ -18,7 +18,8 @@ impl DexProtocol<EvmChain> for TraderJoeProtocol {
 	}
 
 	fn get_call_data(_pair: TokenPair) -> Vec<u8> {
-		hex!("0902f1ac").to_vec() // getReserves() selector
+		// getReserves() selector: 0x0902f1ac
+		sp_std::vec![0x09, 0x02, 0xf1, 0xac]
 	}
 
 	fn parse_price(data: Vec<u8>) -> Result<f64, &'static str> {
@@ -26,10 +27,10 @@ impl DexProtocol<EvmChain> for TraderJoeProtocol {
 			return Err("Invalid Trader Joe response length");
 		}
 
-		let reserve0_u256 = U256::from_be_slice(&data[0..32]);
-		let reserve1_u256 = U256::from_be_slice(&data[32..64]);
-		let reserve0_u128 = reserve0_u256.to::<u128>();
-		let reserve1_u128 = reserve1_u256.to::<u128>();
+		let reserve0_u256 = U256::from_big_endian(&data[0..32]);
+		let reserve1_u256 = U256::from_big_endian(&data[32..64]);
+		let reserve0_u128 = reserve0_u256.low_u128();
+		let reserve1_u128 = reserve1_u256.low_u128();
 
 		if reserve0_u128 == 0 || reserve1_u128 == 0 {
 			return Err("Zero liquidity in Trader Joe pool");

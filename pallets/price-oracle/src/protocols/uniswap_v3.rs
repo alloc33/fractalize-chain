@@ -1,6 +1,6 @@
 use super::DexProtocol;
 use crate::{chains::EvmChain, types::TokenPair};
-use alloy_primitives::{hex, U256};
+use sp_core::U256;
 use sp_std::vec::Vec;
 
 /// Uniswap V3 protocol (works on any EVM chain)
@@ -17,7 +17,8 @@ impl DexProtocol<EvmChain> for UniswapV3Protocol {
 	}
 
 	fn get_call_data(_pair: TokenPair) -> Vec<u8> {
-		hex!("3850c7bd").to_vec() // slot0() selector
+		// slot0() selector: 0x3850c7bd
+		sp_std::vec![0x38, 0x50, 0xc7, 0xbd]
 	}
 
 	fn parse_price(data: Vec<u8>) -> Result<f64, &'static str> {
@@ -26,8 +27,8 @@ impl DexProtocol<EvmChain> for UniswapV3Protocol {
 		}
 
 		// Extract sqrtPriceX96 from slot0() response
-		let sqrt_price_x96 = U256::from_be_slice(&data[0..32]);
-		let sqrt_price_x96_u128 = sqrt_price_x96.to::<u128>();
+		let sqrt_price_x96 = U256::from_big_endian(&data[0..32]);
+		let sqrt_price_x96_u128 = sqrt_price_x96.low_u128();
 
 		if sqrt_price_x96_u128 == 0 {
 			return Err("Invalid sqrtPriceX96");

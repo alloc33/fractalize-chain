@@ -159,4 +159,7 @@ impl pallet_sudo::Config for Runtime {
 
 impl pallet_price_oracle::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
+	type UpdateInterval = ConstU32<3>; // Update every 3 blocks (18 seconds on 6s blocks)
+	type HttpTimeout = ConstU64<10000>; // 10 second timeout
+	type MaxExchangesPerBlock = ConstU8<5>; // Query all exchanges per block
 }

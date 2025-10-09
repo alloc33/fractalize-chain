@@ -20,8 +20,8 @@ sp-io = { workspace = true }
 serde = { workspace = true }
 log = { workspace = true }
 sp-std = { workspace = true }
-alloy-core = { version = "0.7", default-features = false }
-alloy-primitives = { version = "0.7", default-features = false }
+sp-core = { workspace = true }
+array-bytes = { workspace = true }
 
 [features]
 default = [ "std" ]
@@ -36,6 +36,5 @@ std = [
     "log/std",
     "sp-std/std",
     "scale-info/std",
-    "alloy-core/std",
-    "alloy-primitives/std",
+    "sp-core/std",
 ]

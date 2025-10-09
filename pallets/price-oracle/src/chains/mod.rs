@@ -13,5 +13,6 @@ pub trait ChainInterface {
 		rpc_url: &str,
 		address: &str,
 		data: &[u8],
+		timeout_ms: u64,
 	) -> Result<Self::RawResponse, http::Error>;
 }
