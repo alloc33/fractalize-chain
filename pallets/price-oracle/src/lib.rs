@@ -113,7 +113,7 @@ pub mod pallet {
 				};
 
 				for exchange in exchanges_to_query {
-					if let Err(_e) = Self::fetch_and_store_price(exchange, pair) {
+					if let Err(_e) = Self::fetch_prices(exchange, pair) {
 						log::error!("❌ {} | {}", exchange.get_name(), pair.as_str());
 					}
 				}
@@ -123,7 +123,7 @@ pub mod pallet {
 
 	impl<T: Config> Pallet<T> {
 		/// A function to fetch and store price from any exchange
-		fn fetch_and_store_price(
+		fn fetch_prices(
 			exchange: &dyn ExchangeInterface,
 			pair: TokenPair,
 		) -> Result<(), http::Error> {
@@ -134,13 +134,15 @@ pub mod pallet {
 				exchange.fetch_price(pair, timeout_ms, min_price, max_price)?;
 			let pair_hash = pair.to_hash();
 
-			<PriceData<T>>::insert(pair_hash, exchange.get_exchange_id(), (price_micro, timestamp));
+			// TODO: we will loose time trying to store price data, here is the place where mev
+			// detection logic should run + alerting
+			// <PriceData<T>>::insert(pair_hash, exchange.get_exchange_id(), (price_micro, timestamp));
 
-			<Pallet<T>>::deposit_event(Event::PriceUpdated {
-				token_pair: pair_hash,
-				price: price_micro,
-				timestamp,
-			});
+			// <Pallet<T>>::deposit_event(Event::PriceUpdated {
+			// 	token_pair: pair_hash,
+			// 	price: price_micro,
+			// 	timestamp,
+			// });
 
 			Ok(())
 		}
