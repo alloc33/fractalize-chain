@@ -1,6 +1,6 @@
 # FractalizeChain
 
-A Substrate-based blockchain specialized for cross-exchange arbitrage detection and MEV extraction.
+A Substrate-based blockchain specialized for cross-exchange arbitrage detection and MEV extraction. Built from Substrate solochain template.
 
 ## Overview
 
