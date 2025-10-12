@@ -136,13 +136,6 @@ pub mod pallet {
 
 			// TODO: we will loose time trying to store price data, here is the place where mev
 			// detection logic should run + alerting
-			// <PriceData<T>>::insert(pair_hash, exchange.get_exchange_id(), (price_micro, timestamp));
-
-			// <Pallet<T>>::deposit_event(Event::PriceUpdated {
-			// 	token_pair: pair_hash,
-			// 	price: price_micro,
-			// 	timestamp,
-			// });
 
 			Ok(())
 		}
