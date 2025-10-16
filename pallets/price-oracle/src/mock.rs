@@ -9,6 +9,7 @@ use frame_support::{
 };
 use sp_core::H256;
 use sp_runtime::{
+	testing::TestXt,
 	traits::{BlakeTwo256, IdentityLookup},
 	BuildStorage,
 };
@@ -51,8 +52,26 @@ impl frame_system::Config for Test {
 	type MaxConsumers = ConstU32<16>;
 }
 
+type Extrinsic = TestXt<RuntimeCall, ()>;
+
+impl<LocalCall> frame_system::offchain::CreateTransactionBase<LocalCall> for Test
+where
+	RuntimeCall: From<LocalCall>,
+{
+	type RuntimeCall = RuntimeCall;
+	type Extrinsic = Extrinsic;
+}
+
+impl<LocalCall> frame_system::offchain::CreateBare<LocalCall> for Test
+where
+	RuntimeCall: From<LocalCall>,
+{
+	fn create_bare(call: Self::RuntimeCall) -> Self::Extrinsic {
+		Extrinsic::new_bare(call)
+	}
+}
+
 impl pallet_price_oracle::Config for Test {
-	type RuntimeEvent = RuntimeEvent;
 	type UpdateInterval = ConstU64<3>; // Every 3 blocks for testing
 	type HttpTimeout = ConstU64<5000>; // 5 seconds for testing
 	type MaxExchangesPerBlock = ConstU8<3>; // Limit to 3 exchanges for testing

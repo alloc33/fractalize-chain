@@ -35,128 +35,167 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use crate::{
-		exchanges::{registry, ExchangeInterface},
-		types::TokenPair,
-	};
-	use frame_support::pallet_prelude::*;
-	use frame_system::pallet_prelude::*;
-	use sp_runtime::offchain::http;
-	use sp_std::collections::btree_map::BTreeMap;
+    use crate::{
+        exchanges::{registry, ExchangeInterface},
+        types::TokenPair,
+    };
+    use frame_support::pallet_prelude::*;
+    use frame_system::{
+        offchain::{CreateBare, SubmitTransaction},
+        pallet_prelude::*,
+    };
+    use sp_runtime::{
+        offchain::http,
+        transaction_validity::{
+            InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
+            ValidTransaction,
+        },
+    };
+    use sp_std::collections::btree_map::BTreeMap;
 
-	#[pallet::pallet]
-	pub struct Pallet<T>(_);
+    #[pallet::pallet]
+    pub struct Pallet<T>(_);
 
-	#[pallet::config]
-	pub trait Config: frame_system::Config {
-		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    #[pallet::config]
+    pub trait Config: CreateBare<Call<Self>> + frame_system::Config {
+        /// How often to update prices (in blocks)
+        #[pallet::constant]
+        type UpdateInterval: Get<BlockNumberFor<Self>>;
 
-		/// How often to update prices (in blocks)
-		#[pallet::constant]
-		type UpdateInterval: Get<BlockNumberFor<Self>>;
+        /// HTTP request timeout in milliseconds
+        #[pallet::constant]
+        type HttpTimeout: Get<u64>;
 
-		/// HTTP request timeout in milliseconds
-		#[pallet::constant]
-		type HttpTimeout: Get<u64>;
+        /// Maximum exchanges to query per block
+        #[pallet::constant]
+        type MaxExchangesPerBlock: Get<u8>;
+    }
 
-		/// Maximum exchanges to query per block
-		#[pallet::constant]
-		type MaxExchangesPerBlock: Get<u8>;
-	}
+    #[pallet::error]
+    pub enum Error<T> {
+        PriceNotFound,
+    }
 
-	#[pallet::event]
-	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	pub enum Event<T: Config> {
-		/// Price updated for a token pair
-		PriceUpdated { token_pair: [u8; 32], price: u64, timestamp: u64 },
-	}
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        #[pallet::call_index(0)]
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn submit_price_unsigned(
+            origin: OriginFor<T>,
+            pair_hash: [u8; 32],
+            exchange_id: u8,
+            price_micro: u64,
+            timestamp: u64,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+            <PriceData<T>>::insert(pair_hash, exchange_id, (price_micro, timestamp));
+            Ok(())
+        }
+    }
 
-	#[pallet::error]
-	pub enum Error<T> {
-		/// Price data not found
-		PriceNotFound,
-	}
+    #[pallet::validate_unsigned]
+    impl<T: Config> ValidateUnsigned for Pallet<T> {
+        type Call = Call<T>;
 
-	#[pallet::storage]
-	#[pallet::getter(fn price_data)]
-	pub type PriceData<T: Config> = StorageDoubleMap<
-		_,
-		Blake2_128Concat,
-		[u8; 32], // Token pair hash
-		Blake2_128Concat,
-		u8,         // Exchange ID
-		(u64, u64), // (price_micro, timestamp)
-		OptionQuery,
-	>;
+        fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
+            match call {
+                Call::submit_price_unsigned { .. } => {
+                    ValidTransaction::with_tag_prefix("PriceOracle")
+                        .priority(TransactionPriority::MAX)
+                        .longevity(3)
+                        .propagate(true)
+                        .build()
+                }
+                _ => InvalidTransaction::Call.into(),
+            }
+        }
+    }
 
-	#[pallet::hooks]
-	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-		fn offchain_worker(block_number: BlockNumberFor<T>) {
-			log::info!("Running offchain worker at block: {:?}", block_number);
+    #[pallet::storage]
+    #[pallet::getter(fn price_data)]
+    pub type PriceData<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        [u8; 32], // Token pair hash
+        Blake2_128Concat,
+        u8,         // Exchange ID
+        (u64, u64), // (price_micro, timestamp)
+        OptionQuery,
+    >;
 
-			// Use configurable update interval
-			if block_number % T::UpdateInterval::get() != sp_runtime::traits::Zero::zero() {
-				return;
-			}
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn offchain_worker(block_number: BlockNumberFor<T>) {
+            log::info!("Running offchain worker at block: {:?}", block_number);
 
-			// Fetch prices from all exchanges for all pairs - TRULY FLEXIBLE!
-			let pairs_to_fetch = [TokenPair::EthUsd];
+            // Use configurable update interval
+            if block_number % T::UpdateInterval::get() != sp_runtime::traits::Zero::zero() {
+                return;
+            }
 
-			for pair in pairs_to_fetch {
-				let exchanges = registry::get_all_exchanges();
-				let max_exchanges = T::MaxExchangesPerBlock::get() as usize;
-				let exchanges_to_query = if exchanges.len() <= max_exchanges {
-					exchanges
-				} else {
-					// Take first N exchanges (could be randomized later)
-					exchanges.into_iter().take(max_exchanges).collect()
-				};
+            // Fetch prices from all exchanges for all pairs.
+            let pairs_to_fetch = [TokenPair::EthUsd];
 
-				for exchange in exchanges_to_query {
-					if let Err(_e) = Self::fetch_prices(exchange, pair) {
-						log::error!("❌ {} | {}", exchange.get_name(), pair.as_str());
-					}
-				}
-			}
-		}
-	}
+            for pair in pairs_to_fetch {
+                let exchanges = registry::get_all_exchanges();
+                let max_exchanges = T::MaxExchangesPerBlock::get() as usize;
+                let exchanges_to_query = if exchanges.len() <= max_exchanges {
+                    exchanges
+                } else {
+                    // Take first N exchanges (could be randomized later)
+                    exchanges.into_iter().take(max_exchanges).collect()
+                };
 
-	impl<T: Config> Pallet<T> {
-		/// A function to fetch and store price from any exchange
-		fn fetch_prices(
-			exchange: &dyn ExchangeInterface,
-			pair: TokenPair,
-		) -> Result<(), http::Error> {
-			let timeout_ms = T::HttpTimeout::get();
-			let (min_price, max_price) = pair.get_price_bounds();
+                for exchange in exchanges_to_query {
+                    if let Err(_e) = Self::fetch_prices(exchange, pair) {
+                        log::error!("❌ {} | {}", exchange.get_name(), pair.as_str());
+                    }
+                }
+            }
+        }
+    }
 
-			let (price_micro, timestamp) =
-				exchange.fetch_price(pair, timeout_ms, min_price, max_price)?;
-			let pair_hash = pair.to_hash();
+    impl<T: Config> Pallet<T> {
+        fn fetch_prices(
+            exchange: &dyn ExchangeInterface,
+            pair: TokenPair,
+        ) -> Result<(), http::Error> {
+            let timeout_ms = T::HttpTimeout::get();
+            let (min_price, max_price) = pair.get_price_bounds();
 
-			// TODO: we will loose time trying to store price data, here is the place where mev
-			// detection logic should run + alerting
+            let (price_micro, timestamp) =
+                exchange.fetch_price(pair, timeout_ms, min_price, max_price)?;
 
-			Ok(())
-		}
+            let call = Call::submit_price_unsigned {
+                pair_hash: pair.to_hash(),
+                exchange_id: exchange.get_exchange_id(),
+                price_micro,
+                timestamp,
+            };
 
-		/// Get price data for a token pair from a specific exchange
-		pub fn get_price(pair_hash: [u8; 32], exchange_id: u8) -> Option<(u64, u64)> {
-			<PriceData<T>>::get(pair_hash, exchange_id)
-		}
+            let xt = T::create_bare(call.into());
+            SubmitTransaction::<T, Call<T>>::submit_transaction(xt)
+                .map_err(|_| http::Error::IoError)?;
+            Ok(())
+        }
 
-		/// Get all prices for a token pair from all exchanges
-		pub fn get_all_prices(pair_hash: [u8; 32]) -> BTreeMap<u8, (u64, u64)> {
-			let mut prices = BTreeMap::new();
+        /// Get price data for a token pair from a specific exchange
+        pub fn get_price(pair_hash: [u8; 32], exchange_id: u8) -> Option<(u64, u64)> {
+            <PriceData<T>>::get(pair_hash, exchange_id)
+        }
 
-			// Check all known exchange IDs
-			for exchange_id in 1..=5 {
-				if let Some(price_data) = Self::get_price(pair_hash, exchange_id) {
-					prices.insert(exchange_id, price_data);
-				}
-			}
+        /// Get all prices for a token pair from all exchanges
+        pub fn get_all_prices(pair_hash: [u8; 32]) -> BTreeMap<u8, (u64, u64)> {
+            let mut prices = BTreeMap::new();
 
-			prices
-		}
-	}
+            // Check all known exchange IDs
+            for exchange_id in 1..=5 {
+                if let Some(price_data) = Self::get_price(pair_hash, exchange_id) {
+                    prices.insert(exchange_id, price_data);
+                }
+            }
+
+            prices
+        }
+    }
 }

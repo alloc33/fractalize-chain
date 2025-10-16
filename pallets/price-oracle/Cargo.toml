@@ -1,23 +1,20 @@
 [package]
 name = "pallet-price-oracle"
-description = ""
+description = "A decentralized price oracle for fetching cryptocurrency prices from multiple DEXs"
 version = "0.1.0"
 license = "Unlicense"
-authors.workspace = true
-homepage.workspace = true
-repository.workspace = true
-edition.workspace = true
+edition = "2021"
 publish = false
 
 [dependencies]
-codec = { workspace = true }
+codec = { workspace = true, features = ["derive"] }
 frame-support = { workspace = true }
 frame-system = { workspace = true }
 sp-runtime = { workspace = true }
-scale-info = { workspace = true }
+scale-info = { workspace = true, features = ["derive"] }
 sp-offchain = { workspace = true }
 sp-io = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["alloc", "derive"] }
 log = { workspace = true }
 sp-std = { workspace = true }
 sp-core = { workspace = true }

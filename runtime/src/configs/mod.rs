@@ -157,8 +157,25 @@ impl pallet_sudo::Config for Runtime {
 	type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
+// Implement CreateBare for unsigned transactions from offchain workers
+impl<LocalCall> frame_system::offchain::CreateTransactionBase<LocalCall> for Runtime
+where
+	RuntimeCall: From<LocalCall>,
+{
+	type RuntimeCall = RuntimeCall;
+	type Extrinsic = super::UncheckedExtrinsic;
+}
+
+impl<LocalCall> frame_system::offchain::CreateBare<LocalCall> for Runtime
+where
+	RuntimeCall: From<LocalCall>,
+{
+	fn create_bare(call: Self::RuntimeCall) -> Self::Extrinsic {
+		super::UncheckedExtrinsic::new_bare(call)
+	}
+}
+
 impl pallet_price_oracle::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
 	type UpdateInterval = ConstU32<3>; // Update every 3 blocks (18 seconds on 6s blocks)
 	type HttpTimeout = ConstU64<10000>; // 10 second timeout
 	type MaxExchangesPerBlock = ConstU8<5>; // Query all exchanges per block
