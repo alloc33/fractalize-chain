@@ -2,3 +2,7 @@ target/
 CLAUDE.md
 GOAL.md
 VISION.md
+
+# macOS files
+.DS_Store
+**/.DS_Store
