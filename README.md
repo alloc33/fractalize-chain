@@ -1,5 +1,8 @@
 # FractalizeChain
 
+> 🚧 **UNDER HEAVY DEVELOPMENT** 🛠️
+> This project is in early research phase. Architecture and implementation are actively evolving. 🔧⚙️
+
 **The fastest decentralized exchange ever built**
 
 A Substrate-based blockchain with kernel-space optimizations for sub-millisecond order matching. Purpose-built for high-frequency trading with MEV resistance baked into consensus.
